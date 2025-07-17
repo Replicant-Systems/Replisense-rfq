@@ -1,0 +1,13 @@
+psycopg2-binary 
+pyautogen 
+pandas 
+PyPDF2 
+python-docx 
+openpyxl 
+mammoth
+fastapi
+unicorn
+python-dotenv
+ag2[openai]
+python-multipart
+uvicorn
