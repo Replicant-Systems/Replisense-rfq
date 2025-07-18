@@ -1,0 +1,28 @@
+name: Deploy Replisense RFQ Service
+
+on:
+  push:
+    branches:
+      - main  # or production if you prefer
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Copy code to EC2 & Deploy
+        run: |
+          echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
+          chmod 600 key.pem
+
+          ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+            cd ~/Replisense-rfq
+            git pull origin main
+            sudo docker stop rfq-service || true
+            sudo docker rm rfq-service || true
+            sudo docker build -t replisense-rfq .
+            sudo docker run -d --env-file .env -p 8000:8000 --name rfq-service replisense-rfq
+          EOF
