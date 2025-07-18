@@ -1,4 +1,4 @@
-# Replisense RFQ Microservice
+# Replisense Request For Quotation Microservice
 
 A Python-based containerised microservice for parsing and extracting RFQ (Request for Quotation) data from email text and attachments (PDF, Excel). This service powers the RFQ intelligence module in the [Replisense](https://www.replicantsys.com/) platform by providing fast, reliable LLM-driven extraction of line items and metadata.
 
