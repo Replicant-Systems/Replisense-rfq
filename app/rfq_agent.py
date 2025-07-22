@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional
 from pydantic import BaseModel, ValidationError
 from tenacity import retry, stop_after_attempt, wait_exponential
 import logging
+import time
 
 load_dotenv()
 
@@ -99,9 +100,13 @@ class RFQFieldGenerator:
     )
     async def generate_async(self, raw_text: str, source_file: str = "email-body") -> Dict[str, Any]:
         """Async version of generate method with retry logic"""
-        return await asyncio.get_event_loop().run_in_executor(
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
             None, self._generate_sync, raw_text, source_file
         )
+        # return await asyncio.get_event_loop().run_in_executor(
+        #     None, self._generate_sync, raw_text, source_file
+        # )
 
     def generate(self, raw_text: str, source_file: str = "email-body") -> Dict[str, Any]:
         """Synchronous version for backward compatibility"""
@@ -122,25 +127,35 @@ class RFQFieldGenerator:
         
         try:
             logger.info("📤 Sending prompt to LLM...")
-            start_time = asyncio.get_event_loop().time() if hasattr(asyncio, 'get_running_loop') else 0
+            # start_time = asyncio.get_event_loop().time() if hasattr(asyncio, 'get_running_loop') else 0
             
+        # try:
+            start_time = time.perf_counter()
+        # except RuntimeError:
+        #     start_time = 0
+
+
             reply = self.agent.generate_reply([{"role": "user", "content": prompt}])
             
             if hasattr(asyncio, 'get_running_loop'):
-                duration = asyncio.get_event_loop().time() - start_time
+                # duration = asyncio.get_event_loop().time() - start_time
+                duration = time.perf_counter() - start_time
                 logger.info(f"📥 LLM response received in {duration:.2f}s")
             else:
                 logger.info("📥 LLM response received")
 
             # Parse and validate response
             parsed_response = self._parse_and_validate_response(reply, source_file)
-            
+            logger.info (f"parsed response:  {parsed_response}")
             logger.info(f"📄 Successfully parsed RFQ fields with confidence: {parsed_response.get('confidence_score', 0.0)}")
             return parsed_response.dict() if hasattr(parsed_response, 'dict') else parsed_response
 
         except Exception as e:
+            loop = None
+            start_time = 0
             logger.error(f"❌ Exception during generation: {str(e)}")
             return self._create_error_response(str(e))
+        
 
     def _parse_and_validate_response(self, reply: Any, source_file: str) -> Dict[str, Any]:
         """Parse LLM response and validate using Pydantic"""

@@ -16,8 +16,8 @@ import tempfile
 from pathlib import Path
 
 # Import our optimized modules
-from file_parser import FileParser, FileParsingError
-from rfq_agent import RFQFieldGenerator
+from app.file_parser import FileParser, FileParsingError
+from app.rfq_agent import RFQFieldGenerator
 
 # Load environment variables
 load_dotenv()
