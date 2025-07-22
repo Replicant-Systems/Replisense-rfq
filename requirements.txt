@@ -1,13 +1,41 @@
-psycopg2-binary 
-pyautogen 
-pandas 
-PyPDF2 
-python-docx 
-openpyxl 
-mammoth
+
+# Core FastAPI and async support
 fastapi
-unicorn
-python-dotenv
-ag2[openai]
-python-multipart
 uvicorn
+python-multipart
+aiofiles
+
+# Environment and configuration
+python-dotenv
+
+# AutoGen for LLM integration
+pyautogen
+
+# File parsing - Core libraries
+pandas
+openpyxl  # For Excel .xlsx files
+xlrd      # For Excel .xls files
+python-docx
+
+# PDF parsing - Improved library (install with: pip install pdfplumber)
+pdfplumber
+# Fallback PDF library
+PyPDF2
+
+# Data validation and models
+pydantic
+
+# Retry logic and error handling
+tenacity
+
+# Logging and monitoring
+structlog
+
+# Development and testing
+pytest
+pytest-asyncio
+pytest-cov
+black
+flake8
+mypy
+
