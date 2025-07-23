@@ -21,7 +21,7 @@ class LineItem(BaseModel):
     part_number: Optional[str] = None
     description: Optional[str] = None
     quantity: Optional[int] = None
-    target_price: Optional[float] = None
+    target_price: Optional[str] = None
 
 class RFQResponse(BaseModel):
     title: Optional[str] = None
