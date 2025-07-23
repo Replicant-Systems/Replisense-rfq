@@ -21,7 +21,8 @@ class LineItem(BaseModel):
     part_number: Optional[str] = None
     description: Optional[str] = None
     quantity: Optional[int] = None
-    target_price: Optional[str] = None
+    target_price: Optional[float] = None
+    currency: Optional[str] = None 
 
 class RFQResponse(BaseModel):
     title: Optional[str] = None
@@ -56,6 +57,7 @@ LLM_CONFIG = {
 
 # Extract prompt template to constant
 # Extract prompt template to constant
+# Extract prompt template to constant
 EXTRACTION_PROMPT_TEMPLATE = """Extract the following fields from the RFQ text below and return ONLY valid JSON:
 Required fields:
 - title: Document title or subject
@@ -68,16 +70,21 @@ Required fields:
 - delivery_deadline: When delivery is needed
 - response_due_date: When response is due
 - description: Brief description of requirements
-- line_items: Array of objects with part_number, description, quantity, target_price (MUST include currency symbol when available - convert words to symbols: "dollars"→"$", "euros"→"€", "pounds"→"£", "rupees"→"₹", etc.)
+- line_items: Array of objects with part_number, description, quantity, target_price (numeric value only), currency (currency symbol or word as found in text)
 - requested_documents: Array of required document types
 - confidence_score: Float 0.0-1.0 indicating extraction confidence
 - missing_fields: Array of field names that couldn't be extracted
 - requires_review: Boolean indicating if human review is needed
 
-IMPORTANT: For target_price field, include currency symbol when available:
-- If price shows "$100" or "100 USD" or "100 dollars" → format as "$100"
-- If price shows "₹500" or "500 INR" or "500 rupees" → format as "₹500"
-- If no currency is specified, return only the numeric value: "100"
+IMPORTANT: For line_items, separate price and currency:
+- target_price: Extract only the numeric value (e.g., "100", "50.75", "1000")
+- currency: Extract currency as found in text - can be symbol ($, €, £, ₹) or word (dollars, euros, pounds, rupees) or code (USD, EUR, GBP, INR)
+- Examples:
+  * "$100" → target_price: "100", currency: "$"
+  * "50 euros" → target_price: "50", currency: "euros"  
+  * "75 GBP" → target_price: "75", currency: "GBP"
+  * "₹500" → target_price: "500", currency: "₹"
+  * "25" (no currency) → target_price: "25", currency: null
 
 Return only valid JSON. Do not include any explanatory text.
 Text to analyze:
