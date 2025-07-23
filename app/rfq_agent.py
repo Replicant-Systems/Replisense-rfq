@@ -5,7 +5,7 @@ import os
 import json
 import asyncio
 from typing import Dict, Any, Optional
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, field_validator
 from tenacity import retry, stop_after_attempt, wait_exponential
 import logging
 import time
@@ -23,6 +23,20 @@ class LineItem(BaseModel):
     quantity: Optional[int] = None
     target_price: Optional[float] = None
     currency: Optional[str] = None 
+    
+    @field_validator("quantity", mode="before")
+    @classmethod
+    def parse_quantity(cls, v):
+        if isinstance(v, str):
+            return int(v.replace(",", ""))
+        return v
+
+    @field_validator("target_price", mode="before")
+    @classmethod
+    def parse_target_price(cls, v):
+        if isinstance(v, str):
+            return float(v.replace(",", ""))
+        return v
 
 class RFQResponse(BaseModel):
     title: Optional[str] = None
