@@ -55,8 +55,8 @@ LLM_CONFIG = {
 }
 
 # Extract prompt template to constant
+# Extract prompt template to constant
 EXTRACTION_PROMPT_TEMPLATE = """Extract the following fields from the RFQ text below and return ONLY valid JSON:
-
 Required fields:
 - title: Document title or subject
 - client_name: Client/company name
@@ -68,14 +68,18 @@ Required fields:
 - delivery_deadline: When delivery is needed
 - response_due_date: When response is due
 - description: Brief description of requirements
-- line_items: Array of objects with part_number, description, quantity, target_price
+- line_items: Array of objects with part_number, description, quantity, target_price (MUST include currency symbol when available - convert words to symbols: "dollars"→"$", "euros"→"€", "pounds"→"£", "rupees"→"₹", etc.)
 - requested_documents: Array of required document types
 - confidence_score: Float 0.0-1.0 indicating extraction confidence
 - missing_fields: Array of field names that couldn't be extracted
 - requires_review: Boolean indicating if human review is needed
 
-Return only valid JSON. Do not include any explanatory text.
+IMPORTANT: For target_price field, include currency symbol when available:
+- If price shows "$100" or "100 USD" or "100 dollars" → format as "$100"
+- If price shows "₹500" or "500 INR" or "500 rupees" → format as "₹500"
+- If no currency is specified, return only the numeric value: "100"
 
+Return only valid JSON. Do not include any explanatory text.
 Text to analyze:
 """
 
