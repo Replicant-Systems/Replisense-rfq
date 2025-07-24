@@ -1,19 +1,41 @@
-name: Deploy Replisense RFQ Service
+name: Replisense RFQ CI/CD Pipeline
 
 on:
   push:
     branches:
-      - main  # or production if you prefer
+      - main
 
 jobs:
-  deploy:
+  test-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: ⬇️ Checkout code
         uses: actions/checkout@v3
 
-      - name: Copy code to EC2 & Deploy
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name:  Run Tests with Coverage
+        run: |
+          pytest --cov=app --cov-report=term-missing
+          
+      - name: ✅ Check test status
+        if: ${{ failure() }}
+        run: |
+          echo "❌ Tests failed. Halting deployment."
+          exit 1
+
+      - name: 🚀 Deploy to EC2
+        if: ${{ success() }}
         run: |
           echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
           chmod 600 key.pem
