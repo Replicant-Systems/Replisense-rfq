@@ -39,4 +39,6 @@ flake8
 mypy
 httpx
 autogen
+pyautogen[openai]
+openai
 
