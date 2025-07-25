@@ -38,4 +38,5 @@ black
 flake8
 mypy
 httpx
+autogen
 
