@@ -12,12 +12,11 @@ from functools import lru_cache
 import hashlib
 
 try:
-    import pdfplumber
-    HAS_PDFPLUMBER = True
+    import fitz  # PyMuPDF
+    HAS_PYMUPDF = True
 except ImportError:
-    import PyPDF2
-    HAS_PDFPLUMBER = False
-    logging.warning("pdfplumber not available, falling back to PyPDF2. Install pdfplumber for better PDF parsing.")
+    HAS_PYMUPDF = False
+    logging.warning("PyMuPDF not available. Install pymupdf for PDF parsing support.")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -34,7 +33,11 @@ class FileParser:
         self.thread_pool = ThreadPoolExecutor(max_workers=4)
         
         # Supported file types
-        self.supported_extensions = {'.txt', '.pdf', '.xlsx', '.xls', '.docx', '.csv', '.json'}
+        if HAS_PYMUPDF:
+            self.supported_extensions = {'.txt', '.pdf', '.xlsx', '.xls', '.docx', '.csv', '.json'}
+        else:
+            self.supported_extensions = {'.txt', '.xlsx', '.xls', '.docx', '.csv', '.json'}
+            logger.warning("PDF support disabled - PyMuPDF not available")
         
         logger.info(f"FileParser initialized with max_file_size={max_file_size_mb}MB, max_excel_rows={max_excel_rows}")
 
@@ -59,6 +62,8 @@ class FileParser:
             if file_path.suffix.lower() == '.txt':
                 text = await self._parse_txt_async(file_path)
             elif file_path.suffix.lower() == '.pdf':
+                if not HAS_PYMUPDF:
+                    raise FileParsingError("PDF parsing not available - PyMuPDF not installed")
                 text = await self._parse_pdf_async(file_path)
             elif file_path.suffix.lower() in ['.xlsx', '.xls']:
                 text = await self._parse_excel_async(file_path)
@@ -154,68 +159,57 @@ class FileParser:
             raise FileParsingError("Unable to decode text file with any supported encoding")
 
     async def _parse_pdf_async(self, file_path: Path) -> str:
-        """Parse PDF file asynchronously with improved extraction"""
-        if HAS_PDFPLUMBER:
-            return await asyncio.get_event_loop().run_in_executor(
-                self.thread_pool, self._parse_pdf_with_pdfplumber, file_path
-            )
-        else:
-            return await asyncio.get_event_loop().run_in_executor(
-                self.thread_pool, self._parse_pdf_with_pypdf2, file_path
-            )
+        """Parse PDF file asynchronously using PyMuPDF"""
+        return await asyncio.get_event_loop().run_in_executor(
+            self.thread_pool, self._parse_pdf_sync, file_path
+        )
 
-    def _parse_pdf_with_pdfplumber(self, file_path: Path) -> str:
-        """Parse PDF using pdfplumber (better for tables and complex layouts)"""
-        import pdfplumber
-        
+    def _parse_pdf_sync(self, file_path: Path) -> str:
+        """Parse PDF using PyMuPDF with enhanced text and table extraction"""
         text_parts = []
+        
         try:
-            with pdfplumber.open(file_path) as pdf:
-                for page_num, page in enumerate(pdf.pages, 1):
-                    # Extract text
-                    page_text = page.extract_text()
-                    if page_text:
-                        text_parts.append(f"=== Page {page_num} ===\n{page_text}")
-                    
-                    # Extract tables if any
-                    tables = page.extract_tables()
+            # Open the PDF document
+            doc = fitz.open(str(file_path))
+            
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                
+                # Extract text
+                page_text = page.get_text()
+                if page_text.strip():
+                    text_parts.append(f"=== Page {page_num + 1} ===\n{page_text.strip()}")
+                
+                # Extract tables using PyMuPDF's table detection
+                try:
+                    tables = page.find_tables()
                     for table_num, table in enumerate(tables, 1):
-                        if table:
-                            table_text = f"\n=== Table {table_num} on Page {page_num} ===\n"
-                            for row in table:
-                                if row:
+                        table_data = table.extract()
+                        if table_data:
+                            table_text = f"\n=== Table {table_num} on Page {page_num + 1} ===\n"
+                            for row in table_data:
+                                if row and any(cell for cell in row if cell):  # Skip empty rows
                                     table_text += " | ".join(str(cell) if cell else "" for cell in row) + "\n"
                             text_parts.append(table_text)
-                        
+                except Exception as table_error:
+                    logger.debug(f"Table extraction failed on page {page_num + 1}: {str(table_error)}")
+                    # Continue without tables if extraction fails
+                    
+                # Extract images metadata (optional - you can expand this)
+                image_list = page.get_images()
+                if image_list:
+                    text_parts.append(f"\n=== Images on Page {page_num + 1} ===\nFound {len(image_list)} image(s)")
+            
+            doc.close()
+            
         except Exception as e:
-            logger.warning(f"pdfplumber failed for {file_path.name}: {str(e)}")
-            # Fallback to PyPDF2
-            return self._parse_pdf_with_pypdf2(file_path)
-        
-        result = "\n\n".join(text_parts)
-        return result if result.strip() else "Unable to extract text from PDF"
-
-    def _parse_pdf_with_pypdf2(self, file_path: Path) -> str:
-        """Fallback PDF parsing with PyPDF2"""
-        import PyPDF2
-        
-        text_parts = []
-        try:
-            with open(file_path, 'rb') as f:
-                pdf_reader = PyPDF2.PdfReader(f)
-                for page_num, page in enumerate(pdf_reader.pages, 1):
-                    try:
-                        page_text = page.extract_text()
-                        if page_text and page_text.strip():
-                            text_parts.append(f"=== Page {page_num} ===\n{page_text}")
-                    except Exception as e:
-                        logger.warning(f"Failed to extract page {page_num} from {file_path.name}: {str(e)}")
-                        continue
-        except Exception as e:
+            logger.error(f"PyMuPDF parsing failed for {file_path.name}: {str(e)}")
             raise FileParsingError(f"PDF parsing failed: {str(e)}")
         
-        result = "\n\n".join(text_parts)
-        return result if result.strip() else "Unable to extract text from PDF"
+        if not text_parts:
+            return "PDF appears to be empty or contains no extractable text"
+        
+        return "\n\n".join(text_parts)
 
     async def _parse_excel_async(self, file_path: Path) -> str:
         """Parse Excel file asynchronously with row limits"""
@@ -336,6 +330,31 @@ class FileParser:
         except Exception as e:
             raise FileParsingError(f"JSON parsing failed: {str(e)}")
 
+    def get_pdf_metadata(self, file_path: str) -> Dict[str, Any]:
+        """Get PDF metadata using PyMuPDF"""
+        if not HAS_PYMUPDF:
+            raise FileParsingError("PDF metadata extraction not available - PyMuPDF not installed")
+        
+        file_path = Path(file_path)
+        try:
+            doc = fitz.open(str(file_path))
+            metadata = doc.metadata
+            
+            # Add additional info
+            metadata.update({
+                'page_count': len(doc),
+                'file_size': file_path.stat().st_size,
+                'is_encrypted': doc.is_encrypted,
+                'is_pdf': doc.is_pdf,
+                'permissions': doc.permissions if hasattr(doc, 'permissions') else None
+            })
+            
+            doc.close()
+            return metadata
+            
+        except Exception as e:
+            raise FileParsingError(f"Failed to extract PDF metadata: {str(e)}")
+
     def __del__(self):
         """Cleanup thread pool"""
         if hasattr(self, 'thread_pool'):
@@ -350,4 +369,7 @@ async def parse_file_async(file_path: str, max_file_size_mb: int = 10) -> Dict[s
 
 def get_supported_extensions() -> set:
     """Get list of supported file extensions"""
-    return {'.txt', '.pdf', '.xlsx', '.xls', '.docx', '.csv', '.json'}
+    if HAS_PYMUPDF:
+        return {'.txt', '.pdf', '.xlsx', '.xls', '.docx', '.csv', '.json'}
+    else:
+        return {'.txt', '.xlsx', '.xls', '.docx', '.csv', '.json'}

@@ -5,9 +5,10 @@ import os
 import json
 import asyncio
 from typing import Dict, Any, Optional
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, field_validator
 from tenacity import retry, stop_after_attempt, wait_exponential
 import logging
+import time
 
 load_dotenv()
 
@@ -21,6 +22,21 @@ class LineItem(BaseModel):
     description: Optional[str] = None
     quantity: Optional[int] = None
     target_price: Optional[float] = None
+    currency: Optional[str] = None 
+    
+    @field_validator("quantity", mode="before")
+    @classmethod
+    def parse_quantity(cls, v):
+        if isinstance(v, str):
+            return int(v.replace(",", ""))
+        return v
+
+    @field_validator("target_price", mode="before")
+    @classmethod
+    def parse_target_price(cls, v):
+        if isinstance(v, str):
+            return float(v.replace(",", ""))
+        return v
 
 class RFQResponse(BaseModel):
     title: Optional[str] = None
@@ -54,8 +70,9 @@ LLM_CONFIG = {
 }
 
 # Extract prompt template to constant
+# Extract prompt template to constant
+# Extract prompt template to constant
 EXTRACTION_PROMPT_TEMPLATE = """Extract the following fields from the RFQ text below and return ONLY valid JSON:
-
 Required fields:
 - title: Document title or subject
 - client_name: Client/company name
@@ -67,14 +84,23 @@ Required fields:
 - delivery_deadline: When delivery is needed
 - response_due_date: When response is due
 - description: Brief description of requirements
-- line_items: Array of objects with part_number, description, quantity, target_price
+- line_items: Array of objects with part_number, description, quantity, target_price (numeric value only), currency (currency symbol or word as found in text)
 - requested_documents: Array of required document types
 - confidence_score: Float 0.0-1.0 indicating extraction confidence
 - missing_fields: Array of field names that couldn't be extracted
 - requires_review: Boolean indicating if human review is needed
 
-Return only valid JSON. Do not include any explanatory text.
+IMPORTANT: For line_items, separate price and currency:
+- target_price: Extract only the numeric value (e.g., "100", "50.75", "1000")
+- currency: Extract currency as found in text - can be symbol ($, €, £, ₹) or word (dollars, euros, pounds, rupees) or code (USD, EUR, GBP, INR)
+- Examples:
+  * "$100" → target_price: "100", currency: "$"
+  * "50 euros" → target_price: "50", currency: "euros"  
+  * "75 GBP" → target_price: "75", currency: "GBP"
+  * "₹500" → target_price: "500", currency: "₹"
+  * "25" (no currency) → target_price: "25", currency: null
 
+Return only valid JSON. Do not include any explanatory text.
 Text to analyze:
 """
 
@@ -99,9 +125,13 @@ class RFQFieldGenerator:
     )
     async def generate_async(self, raw_text: str, source_file: str = "email-body") -> Dict[str, Any]:
         """Async version of generate method with retry logic"""
-        return await asyncio.get_event_loop().run_in_executor(
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
             None, self._generate_sync, raw_text, source_file
         )
+        # return await asyncio.get_event_loop().run_in_executor(
+        #     None, self._generate_sync, raw_text, source_file
+        # )
 
     def generate(self, raw_text: str, source_file: str = "email-body") -> Dict[str, Any]:
         """Synchronous version for backward compatibility"""
@@ -122,25 +152,35 @@ class RFQFieldGenerator:
         
         try:
             logger.info("📤 Sending prompt to LLM...")
-            start_time = asyncio.get_event_loop().time() if hasattr(asyncio, 'get_running_loop') else 0
+            # start_time = asyncio.get_event_loop().time() if hasattr(asyncio, 'get_running_loop') else 0
             
+        # try:
+            start_time = time.perf_counter()
+        # except RuntimeError:
+        #     start_time = 0
+
+
             reply = self.agent.generate_reply([{"role": "user", "content": prompt}])
             
             if hasattr(asyncio, 'get_running_loop'):
-                duration = asyncio.get_event_loop().time() - start_time
+                # duration = asyncio.get_event_loop().time() - start_time
+                duration = time.perf_counter() - start_time
                 logger.info(f"📥 LLM response received in {duration:.2f}s")
             else:
                 logger.info("📥 LLM response received")
 
             # Parse and validate response
             parsed_response = self._parse_and_validate_response(reply, source_file)
-            
+            logger.info (f"parsed response:  {parsed_response}")
             logger.info(f"📄 Successfully parsed RFQ fields with confidence: {parsed_response.get('confidence_score', 0.0)}")
             return parsed_response.dict() if hasattr(parsed_response, 'dict') else parsed_response
 
         except Exception as e:
+            loop = None
+            start_time = 0
             logger.error(f"❌ Exception during generation: {str(e)}")
             return self._create_error_response(str(e))
+        
 
     def _parse_and_validate_response(self, reply: Any, source_file: str) -> Dict[str, Any]:
         """Parse LLM response and validate using Pydantic"""

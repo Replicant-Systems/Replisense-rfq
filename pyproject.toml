@@ -18,6 +18,7 @@ dependencies = [
     "psycopg2-binary>=2.9.10",
     "pyautogen>=0.10.0",
     "pydantic>=2.11.7",
+    "pymupdf>=1.26.3",
     "pypdf2>=3.0.1",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
@@ -31,3 +32,14 @@ dependencies = [
     "uvicorn>=0.35.0",
     "xlrd>=2.0.2",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["app"]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
