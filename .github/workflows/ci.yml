@@ -29,8 +29,9 @@ jobs:
 
       - name:  Run Tests with Coverage
         run: |
+          echo "🔑 GROQ_API_KEY=${GROQ_API_KEY}"  # Debug
           pytest --cov=app --cov-report=term-missing
-          
+                
       - name: ✅ Check test status
         if: ${{ failure() }}
         run: |
